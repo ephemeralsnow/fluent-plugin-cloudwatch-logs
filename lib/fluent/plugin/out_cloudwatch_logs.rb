@@ -178,8 +178,17 @@ module Fluent
       token = next_sequence_token(group_name, stream_name)
       args[:sequence_token] = token if token
 
-      response = @logs.put_log_events(args)
-      store_next_sequence_token(group_name, stream_name, response.next_sequence_token)
+      begin
+        response = @logs.put_log_events(args)
+        store_next_sequence_token(group_name, stream_name, response.next_sequence_token)
+      rescue Aws::CloudWatchLogs::Errors::DataAlreadyAcceptedException, Aws::CloudWatchLogs::Errors::InvalidSequenceTokenException => e
+        log.warn e.message
+        log.info "Reset sequene token of '#{group_name}/#{stream_name}'"
+        @sequence_tokens[group_name].delete(stream_name)
+        raise e if e.is_a?(Aws::CloudWatchLogs::Errors::InvalidSequenceTokenException)
+      rescue => e
+        raise e
+      end
     end
 
     def create_log_group(group_name)
